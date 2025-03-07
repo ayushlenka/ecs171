@@ -1,11 +1,9 @@
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
 
-# df = pd.read_csv("CSV_Files/AMZN.csv")
+df = pd.read_csv("CSV_Files/MSFT.csv")
 
-# print(df.iloc[:,  [4] + list(range(6, 18))])
+df.drop(columns=["id"], inplace=True)
+print(df)
 
-for name in ['AMZN', 'AAPL', 'MSFT', 'TSLA']:
-    df = pd.read_csv(f'CSV_Files/{name}.csv')
-
-    print(df.iloc[:, 4])
+df.to_csv("CSV_Files/MSFT.csv", index=False)
