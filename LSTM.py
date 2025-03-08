@@ -3,73 +3,136 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
 
 class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_layers):
+    def __init__(self, input_size, hidden_size, output_size, num_layers, dropout=0.2):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.num_layers = num_layers
         
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=num_layers, 
+                           batch_first=True, dropout=dropout if num_layers > 1 else 0)
         self.fc = nn.Linear(hidden_size, output_size)
     
     def forward(self, x):
-        
         batch_size = x.size(0)
-        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
 
         out, _ = self.lstm(x, (h0, c0))  
         
         out = self.fc(out[:, -1, :])   
         return out
 
+def create_sequences(data, seq_length):
+    sequences = []
+    for i in range(len(data) - seq_length):
+        seq = data[i:i+seq_length]
+        sequences.append(seq)
+    
+    return np.array(sequences)
+
 if __name__ == "__main__":
+    seq_length = 10
+    hidden_size = 64
+    num_layers = 2
+    num_epochs = 300
+    learning_rate = 0.001
+    
+    results = {}
     for name in ['AMZN', 'AAPL', 'TSLA', 'MSFT']:
+        print(f"\n{'='*50}")
         print(f"Training for {name}")
+        print(f"{'='*50}")
+        
         df = pd.read_csv(f'CSV_Files/{name}.csv')
 
         x = df.iloc[:, [3] + list(range(5, 17))]
         y = df.iloc[:, 4]
-
-        x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.8, shuffle=True)
-
-        x_train_tensor = torch.tensor(x_train.values, dtype=torch.float32)
-        x_test_tensor = torch.tensor(x_test.values, dtype=torch.float32)
-        y_train_tensor = torch.tensor(y_train.values, dtype=torch.float32).unsqueeze(1)  
-        y_test_tensor = torch.tensor(y_test.values, dtype=torch.float32).unsqueeze(1)
-
-        x_train_tensor = x_train_tensor.unsqueeze(1) 
-        x_test_tensor  = x_test_tensor.unsqueeze(1)   
-
-        model = LSTM(input_size=13, hidden_size=10, output_size=1, num_layers=2)
-
+        
+        x_scaler = MinMaxScaler()
+        y_scaler = MinMaxScaler()
+        
+        x_scaled = x_scaler.fit_transform(x)
+        y_reshaped = y.values.reshape(-1, 1)
+        y_scaled = y_scaler.fit_transform(y_reshaped).flatten()
+        
+        x_sequences = create_sequences(x_scaled, seq_length)
+        y_values = y_scaled[seq_length:]
+        
+        # Split into training and testing sets - no shuffling to preserve time order
+        x_train, x_test, y_train, y_test = train_test_split(
+            x_sequences, y_values, train_size=0.8, shuffle=False
+        )
+        
+        x_train_tensor = torch.tensor(x_train, dtype=torch.float32)
+        x_test_tensor = torch.tensor(x_test, dtype=torch.float32)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
+        y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
+        
+        input_size = x_scaled.shape[1]
+        model = LSTM(input_size=input_size, hidden_size=hidden_size, 
+                   output_size=1, num_layers=num_layers, dropout=0.2)
+        
         loss_function = nn.MSELoss()
-        optimizer = optim.SGD(model.parameters(), lr=0.03)
-
-        num_epochs = 200
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=10
+        )
+        
+        # Training loop - removed batching, process entire dataset at once
         for epoch in range(num_epochs):
             model.train()
             optimizer.zero_grad()
-
-            y_pred = model(x_train_tensor)
-            loss = loss_function(y_pred, y_train_tensor)
-
+            
+            outputs = model(x_train_tensor)
+            loss = loss_function(outputs, y_train_tensor)
+            
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
+            
+            current_lr = optimizer.param_groups[0]['lr']
+            scheduler.step(loss.item())
+            
             if (epoch + 1) % 50 == 0:
-                print(f"Epoch {epoch+1} - Train MSE: {loss.item():.6f}")
-
+                print(f"Epoch {epoch+1}/{num_epochs} - Train MSE: {loss.item():.6f}, LR: {current_lr:.6f}")
+        
         model.eval()
         with torch.no_grad():
-            y_pred_test = model(x_test_tensor)
-            test_mse = loss_function(y_pred_test, y_test_tensor)
-            print(f"Test MSE: {test_mse.item():.6f}")
-
+            predictions = model(x_test_tensor)
+            test_loss = loss_function(predictions, y_test_tensor)
+            print(f"Test MSE (scaled): {test_loss.item():.6f}")
+            
+            predictions_np = predictions.numpy()
+            actuals_np = y_test_tensor.numpy()
+            
+            predictions_original = y_scaler.inverse_transform(predictions_np).flatten()
+            actuals_original = y_scaler.inverse_transform(actuals_np).flatten()
+            
+            mse_original = np.mean((predictions_original - actuals_original) ** 2)
+            mae_original = np.mean(np.abs(predictions_original - actuals_original))
+            mape_original = np.mean(np.abs((actuals_original - predictions_original) / actuals_original)) * 100
+            
+            print(f"Original scale - MSE: {mse_original:.2f}, MAE: {mae_original:.2f}, MAPE: {mape_original:.2f}%")
+        
+        results[name] = {
+            'scaled_mse': test_loss.item(),
+            'original_mse': mse_original,
+            'mae': mae_original,
+            'mape': mape_original
+        }
+        
         torch.save(model.state_dict(), f"parameters/{name}.pth")
-
-
+    
+    print("\nResults Summary:")
+    print(f"{'Stock':<10} {'Scaled MSE':<15} {'Original MSE':<15} {'MAE':<15} {'MAPE (%)':<15}")
+    print("-" * 70)
+    for name, metrics in results.items():
+        print(f"{name:<10} {metrics['scaled_mse']:<15.6f} {metrics['original_mse']:<15.2f} {metrics['mae']:<15.2f} {metrics['mape']:<15.2f}")
