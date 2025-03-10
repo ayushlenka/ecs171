@@ -7,116 +7,142 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-    const analyzeTweet = async () => {
-      setLoading(true);
-      setError("");
-      setAnalysis(null);
-      setPrediction(null);
+  const analyzeTweet = async () => {
+    setLoading(true);
+    setError("");
+    setAnalysis(null);
+    setPrediction(null);
 
-      try {
-          console.log("🔄 Sending tweet for sentiment analysis...");
+    try {
+      console.log("🔄 Sending tweet for sentiment analysis...");
 
-          const response = await fetch("http://127.0.0.1:8000/analyze_tweet", {
-              method: "POST",
-              headers: {
-                  "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ tweet: userInput }),
-          });
+      const response = await fetch("http://127.0.0.1:8000/analyze_tweet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tweet: userInput }),
+      });
 
-          if (!response.ok) {
-              throw new Error(`HTTP Error! Status: ${response.status}`);
-          }
-
-          const data = await response.json();
-          console.log("✅ Sentiment analysis result:", data);
-          setAnalysis(data);
-
-          // ✅ Now call stock prediction with the tweet text
-          await predictStock(data.sentiment, userInput);
-
-      } catch (error) {
-          console.error("❌ Error fetching sentiment analysis:", error);
-          setError("Failed to analyze tweet. Please try again.");
-      } finally {
-          setLoading(false);
+      if (!response.ok) {
+        throw new Error(`HTTP Error! Status: ${response.status}`);
       }
+
+      const data = await response.json();
+      console.log("✅ Sentiment analysis result:", data);
+      setAnalysis(data);
+
+      await predictStock(data.sentiment, userInput);
+    } catch (error) {
+      setError("Failed to analyze tweet. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const predictStock = async (sentiment, tweet) => {
+    try {
+      console.log("🔄 Sending sentiment score to stock predictor...");
 
-    const predictStock = async (sentiment, tweet) => {
-      try {
-          console.log("🔄 Sending sentiment score to stock predictor...");
+      let sentiment_score = sentiment.toLowerCase() === "bullish" ? 1.0 : sentiment.toLowerCase() === "bearish" ? -1.0 : 0.0;
+      console.log("📤 Sentiment Score Sent:", sentiment_score);
 
-          // ✅ Convert sentiment label to a numerical score
-          let sentiment_score;
-          if (sentiment.toLowerCase() === "bullish") {
-              sentiment_score = 1.0;
-          } else if (sentiment.toLowerCase() === "bearish") {
-              sentiment_score = -1.0;
-          } else {
-              sentiment_score = 0.0;  // Default if sentiment is unclear
-          }
+      let company = extractCompany(tweet);
+      console.log("📤 Sending Data:", { company, sentiment_score });
 
-          console.log("📤 Sentiment Score Sent:", sentiment_score);
+      const response = await fetch("http://127.0.0.1:8000/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company, sentiment_score }),
+      });
 
-          // ✅ Extract the company name from the tweet
-          let company = extractCompany(tweet);
-          
-          console.log("📤 Sending Data:", { company, sentiment_score });
-
-          const response = await fetch("http://127.0.0.1:8000/predict", {
-              method: "POST",
-              headers: {
-                  "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ 
-                  company: company,  
-                  sentiment_score: sentiment_score  
-              }),
-          });
-
-          if (!response.ok) {
-              throw new Error(`HTTP Error! Status: ${response.status}`);
-          }
-
-          const data = await response.json();
-          console.log("✅ Stock prediction result:", data);
-          
-          // ✅ Update the prediction state with trend
-          setPrediction({
-              company: data.company,
-              predicted_change: data.predicted_change,
-              trend: data.trend
-          });
-
-      } catch (error) {
-          console.error("❌ Error fetching stock prediction:", error);
-          setError("Failed to predict stock. Please try again.");
+      if (!response.ok) {
+        throw new Error(`HTTP Error! Status: ${response.status}`);
       }
+
+      const data = await response.json();
+
+      setPrediction({
+        company: data.company,
+        predicted_change: data.predicted_change,
+        trend: data.trend,
+      });
+    } catch (error) {
+      setError("Failed to predict stock. Please try again.");
+    }
   };
 
-
-
-  // ✅ Function to extract the company name from the tweet
   const extractCompany = (tweet) => {
-      const companies = ["Tesla", "Apple", "Amazon", "Microsoft"];
-      for (let company of companies) {
-          if (tweet.toLowerCase().includes(company.toLowerCase())) {
-              return company;  // ✅ Return the first matching company
-          }
-      }
-      return "Tesla";  // Default to Tesla if no company is found
+    const companies = ["Tesla", "Apple", "Amazon", "Microsoft"];
+    return companies.find((company) => tweet.toLowerCase().includes(company.toLowerCase())) || "Tesla";
   };
 
-
+  // ✅ Embedded styles for cleaner UI
+  const styles = {
+    appContainer: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      padding: "20px",
+      backgroundColor: "#f4f4f4",
+      fontFamily: "Arial, sans-serif",
+    },
+    title: {
+      fontSize: "24px",
+      fontWeight: "bold",
+      color: "#333",
+      marginBottom: "20px",
+    },
+    inputBox: {
+      width: "80%",
+      maxWidth: "400px",
+      padding: "10px",
+      fontSize: "16px",
+      border: "1px solid #ccc",
+      borderRadius: "5px",
+      resize: "none",
+    },
+    analyzeBtn: {
+      marginTop: "10px",
+      padding: "10px 20px",
+      fontSize: "16px",
+      backgroundColor: "#007bff",
+      color: "white",
+      border: "none",
+      borderRadius: "5px",
+      cursor: "pointer",
+      transition: "background 0.3s ease",
+    },
+    analyzeBtnHover: {
+      backgroundColor: "#0056b3",
+    },
+    resultBox: {
+      marginTop: "20px",
+      padding: "15px",
+      width: "80%",
+      maxWidth: "400px",
+      backgroundColor: "white",
+      borderRadius: "8px",
+      boxShadow: "0px 4px 6px rgba(0, 0, 0, 0.1)",
+    },
+    errorMessage: {
+      color: "red",
+      marginTop: "10px",
+    },
+    trend: {
+      fontWeight: "bold",
+    },
+    positive: { color: "green" },
+    negative: { color: "red" },
+    stable: { color: "gray" },
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-5">
-      <h1 className="text-2xl font-bold mb-4">Tweet Sentiment & Stock Predictor</h1>
+    <div style={styles.appContainer}>
+      <h1 style={styles.title}>Tweet Sentiment & Stock Predictor</h1>
 
       <textarea
-        className="w-96 p-3 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        style={styles.inputBox}
         rows="3"
         placeholder="Enter a tweet..."
         value={userInput}
@@ -124,44 +150,38 @@ function App() {
       />
 
       <button
-        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md shadow-md hover:bg-blue-600 transition duration-300"
+        style={styles.analyzeBtn}
         onClick={analyzeTweet}
         disabled={loading || !userInput.trim()}
       >
         {loading ? "Analyzing..." : "Analyze & Predict"}
       </button>
 
-      {error && <p className="mt-3 text-red-500">{error}</p>}
+      {error && <p style={styles.errorMessage}>{error}</p>}
 
       {analysis && (
-        <div className="mt-6 p-4 border rounded-md bg-white shadow-md w-96">
-          <h2 className="text-lg font-semibold">Sentiment Analysis</h2>
+        <div style={styles.resultBox}>
+          <h2>Sentiment Analysis</h2>
           <p><strong>Emotion:</strong> {analysis.emotion}</p>
           <p><strong>Sentiment:</strong> {analysis.sentiment}</p>
         </div>
       )}
 
       {prediction && (
-          <div className="mt-6 p-4 border rounded-md bg-white shadow-md w-96">
-              <h2 className="text-lg font-semibold">Stock Prediction</h2>
-              <p><strong>Company:</strong> {prediction.company}</p>
-
-              {/* ✅ Convert predicted change to percentage */}
-              <p><strong>Predicted Change:</strong> { (prediction.predicted_change * 100).toFixed(2) }%</p>
-
-              {/* ✅ Show trend with color formatting */}
-              <p>
-                  <strong>Trend:</strong> 
-                  <span style={{ 
-                      color: prediction.trend === "Positive" ? "green" : prediction.trend === "Negative" ? "red" : "gray"
-                  }}>
-                      {" "}{prediction.trend}
-                  </span>
-              </p>
-          </div>
+        <div style={styles.resultBox}>
+          <h2>Stock Prediction</h2>
+          <p><strong>Company:</strong> {prediction.company}</p>
+          <p><strong>Predicted Change:</strong> { (prediction.predicted_change * 100).toFixed(2) }%</p>
+          <p>
+            <strong>Trend:</strong>
+            <span style={ prediction.trend === "Positive" ? styles.positive :
+                          prediction.trend === "Negative" ? styles.negative :
+                          styles.stable }>
+              {" "}{prediction.trend}
+            </span>
+          </p>
+        </div>
       )}
-
-
     </div>
   );
 }

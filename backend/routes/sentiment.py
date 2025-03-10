@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
-from models.llm import prompting  # Ensure this import is correct
+from models.llm import prompting 
 
 router = APIRouter()
 
@@ -16,17 +16,16 @@ async def analyze_tweet(request: TweetRequest):
         # Call LLM function
         result = prompting(request.tweet)
 
-        logging.info(f"LLM response: {result}")  # ✅ Log what LLM returns
+        logging.info(f"LLM response: {result}") 
 
         if not result or not isinstance(result, str):
             raise HTTPException(status_code=500, detail="LLM response is invalid")
 
-        # Ensure result format is correct before splitting
         parts = result.split()
         if len(parts) < 2:
             raise HTTPException(status_code=500, detail=f"Unexpected LLM output: {result}")
 
-        emotion, market_trend = parts[:2]  # Only take the first two parts
+        emotion, market_trend = parts[:2]
 
         return {
             "emotion": emotion,

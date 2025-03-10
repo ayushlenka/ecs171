@@ -17,7 +17,7 @@ STOCK_MODELS = {
 
 class PredictionRequest(BaseModel):
     company: str
-    sentiment_score: float  # Must be a float
+    sentiment_score: float  # Float
 
 class StockPredictionModel(torch.nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
@@ -50,27 +50,22 @@ async def predict_stock(request: PredictionRequest):
         logging.info(f"📩 Received prediction request: {request}")
 
         if request.company not in STOCK_MODELS:
-            logging.error(f"❌ Invalid company: {request.company}")
+            logging.error(f"Invalid company: {request.company}")
             raise HTTPException(status_code=400, detail="Invalid company. Choose from: Amazon, Apple, Tesla, Microsoft")
 
         model = load_model(request.company)
 
-        # ✅ Expand the input to 13 features
-        input_features = [request.sentiment_score] + [0.0] * 12  # Placeholder for missing features
+        input_features = [request.sentiment_score] + [0.0] * 12  
         input_tensor = torch.tensor(input_features, dtype=torch.float32)
 
-        # ✅ Reshape tensor for LSTM (batch_size=1, seq_length=1, feature_size=13)
         input_tensor = input_tensor.unsqueeze(0).unsqueeze(0)
 
-        logging.info(f"🧠 Model input tensor shape: {input_tensor.shape}")  # Should print (1, 1, 13)
+        logging.info(f"Model input tensor shape: {input_tensor.shape}") 
 
-        # 🔹 Make prediction
         predicted_change = model(input_tensor).item()
 
-        # ✅ Multiply prediction by sentiment score to reflect polarity
         adjusted_change = round(predicted_change * request.sentiment_score, 4)
 
-        # ✅ Determine trend label
         if adjusted_change > 0:
             trend = "Positive"
         elif adjusted_change < 0:
@@ -78,7 +73,7 @@ async def predict_stock(request: PredictionRequest):
         else:
             trend = "Stable"
 
-        logging.info(f"✅ Model output for {request.company}: {adjusted_change} ({trend})")
+        logging.info(f"Model output for {request.company}: {adjusted_change} ({trend})")
 
         return {
             "company": request.company,
@@ -87,5 +82,5 @@ async def predict_stock(request: PredictionRequest):
         }
 
     except Exception as e:
-        logging.error(f"❌ Error predicting stock: {e}")
+        logging.error(f"Error predicting stock: {e}")
         raise HTTPException(status_code=500, detail=str(e))

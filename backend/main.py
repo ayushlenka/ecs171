@@ -5,21 +5,19 @@ from routes import predict, sentiment
 
 app = FastAPI(title="Stock Sentiment Analysis API")
 
-# ✅ CORS Middleware (Keep this)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Use "*" only for development
+    allow_origins=["http://localhost:3000"], 
     allow_credentials=True,
-    allow_methods=["*"],  # ✅ Allow all methods
-    allow_headers=["*"],  # ✅ Allow all headers
+    allow_methods=["*"],  
+    allow_headers=["*"],  
 )
 
-# ✅ Workaround: Handle OPTIONS Requests Manually
 @app.options("/{full_path:path}")
 async def preflight_handler(full_path: str):
     """Manually respond to CORS preflight (OPTIONS) requests."""
     return JSONResponse(
-        content={},  # Empty response body
+        content={}, 
         status_code=200,
         headers={
             "Access-Control-Allow-Origin": "http://localhost:3000",
@@ -28,7 +26,6 @@ async def preflight_handler(full_path: str):
         },
     )
 
-# ✅ Include API routes
 app.include_router(predict.router)
 app.include_router(sentiment.router)
 
