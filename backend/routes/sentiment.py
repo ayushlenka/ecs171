@@ -1,29 +1,38 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from fastapi.responses import JSONResponse
+import logging
+from models.llm import prompting  # Ensure this import is correct
 
 router = APIRouter()
 
 class TweetRequest(BaseModel):
     tweet: str
 
-@router.options("/analyze_tweet")
-async def options_analyze_tweet():
-    """Handles OPTIONS requests for CORS preflight."""
-    return JSONResponse(
-        content={},  # Fix: Provide an empty response body
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    )
-
 @router.post("/analyze_tweet")
 async def analyze_tweet(request: TweetRequest):
-    """Handles tweet analysis."""
     try:
-        return {"emotion": "Excitement", "sentiment": "bullish"}  # Dummy response for testing
+        logging.info(f"Received tweet: {request.tweet}")
+
+        # Call LLM function
+        result = prompting(request.tweet)
+
+        logging.info(f"LLM response: {result}")  # ✅ Log what LLM returns
+
+        if not result or not isinstance(result, str):
+            raise HTTPException(status_code=500, detail="LLM response is invalid")
+
+        # Ensure result format is correct before splitting
+        parts = result.split()
+        if len(parts) < 2:
+            raise HTTPException(status_code=500, detail=f"Unexpected LLM output: {result}")
+
+        emotion, market_trend = parts[:2]  # Only take the first two parts
+
+        return {
+            "emotion": emotion,
+            "sentiment": market_trend
+        }
+
     except Exception as e:
+        logging.error(f"Error processing tweet: {e}")
         raise HTTPException(status_code=500, detail=str(e))
