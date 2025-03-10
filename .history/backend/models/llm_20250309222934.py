@@ -36,5 +36,4 @@ def start_chat():
         response_array = response.split() 
         print(response_array)
 
-if __name__ == "__main__":
-    start_chat()
+start_chat()
