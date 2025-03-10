@@ -7,45 +7,63 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const analyzeTweet = async () => {
-    setLoading(true);
-    setError("");
-    setAnalysis(null);
-    setPrediction(null);
+    const analyzeTweet = async () => {
+      setLoading(true);
+      setError("");
+      setAnalysis(null);
+      setPrediction(null);
 
-    try {
-      console.log("🔄 Sending tweet for sentiment analysis...");
+      try {
+          console.log("🔄 Sending tweet for sentiment analysis...");
 
-      const response = await fetch("http://127.0.0.1:8000/analyze_tweet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ tweet: userInput }),
-      });
+          const response = await fetch("http://127.0.0.1:8000/analyze_tweet", {
+              method: "POST",
+              headers: {
+                  "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ tweet: userInput }),
+          });
 
-      if (!response.ok) {
-        throw new Error(`HTTP Error! Status: ${response.status}`);
+          if (!response.ok) {
+              throw new Error(`HTTP Error! Status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("✅ Sentiment analysis result:", data);
+          setAnalysis(data);
+
+          // ✅ Now call stock prediction with the tweet text
+          await predictStock(data.sentiment, userInput);
+
+      } catch (error) {
+          console.error("❌ Error fetching sentiment analysis:", error);
+          setError("Failed to analyze tweet. Please try again.");
+      } finally {
+          setLoading(false);
       }
-
-      const data = await response.json();
-      console.log("✅ Sentiment analysis result:", data);
-      setAnalysis(data);
-
-      // Now call the stock prediction API
-      await predictStock(data.sentiment);  // Pass sentiment to stock predictor
-
-    } catch (error) {
-      console.error("❌ Error fetching analysis:", error);
-      setError("Failed to analyze tweet. Please try again.");
-    } finally {
-      setLoading(false);
-    }
   };
 
-    const predictStock = async (sentiment_score) => {
+
+    const predictStock = async (sentiment, tweet) => {
       try {
           console.log("🔄 Sending sentiment score to stock predictor...");
+
+          // ✅ Convert sentiment label to a numerical score
+          let sentiment_score;
+          if (sentiment.toLowerCase() === "bullish") {
+              sentiment_score = 1.0;
+          } else if (sentiment.toLowerCase() === "bearish") {
+              sentiment_score = -1.0;
+          } else {
+              sentiment_score = 0.0;  // Default if sentiment is unclear
+          }
+
+          console.log("📤 Sentiment Score Sent:", sentiment_score);
+
+          // ✅ Extract the company name from the tweet
+          let company = extractCompany(tweet);
+          
+          console.log("📤 Sending Data:", { company, sentiment_score });
 
           const response = await fetch("http://127.0.0.1:8000/predict", {
               method: "POST",
@@ -53,8 +71,8 @@ function App() {
                   "Content-Type": "application/json",
               },
               body: JSON.stringify({ 
-                  company: "Tesla", 
-                  sentiment_score: parseFloat(sentiment_score)  // ✅ Convert to float
+                  company: company,  
+                  sentiment_score: sentiment_score  
               }),
           });
 
@@ -64,13 +82,34 @@ function App() {
 
           const data = await response.json();
           console.log("✅ Stock prediction result:", data);
-          setPrediction(data);
+          
+          // ✅ Update the prediction state with trend
+          setPrediction({
+              company: data.company,
+              predicted_change: data.predicted_change,
+              trend: data.trend
+          });
 
       } catch (error) {
           console.error("❌ Error fetching stock prediction:", error);
           setError("Failed to predict stock. Please try again.");
       }
   };
+
+
+
+  // ✅ Function to extract the company name from the tweet
+  const extractCompany = (tweet) => {
+      const companies = ["Tesla", "Apple", "Amazon", "Microsoft"];
+      for (let company of companies) {
+          if (tweet.toLowerCase().includes(company.toLowerCase())) {
+              return company;  // ✅ Return the first matching company
+          }
+      }
+      return "Tesla";  // Default to Tesla if no company is found
+  };
+
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-5">
@@ -103,12 +142,26 @@ function App() {
       )}
 
       {prediction && (
-        <div className="mt-6 p-4 border rounded-md bg-white shadow-md w-96">
-          <h2 className="text-lg font-semibold">Stock Prediction</h2>
-          <p><strong>Company:</strong> {prediction.company}</p>
-          <p><strong>Predicted Change:</strong> {prediction.predicted_change}</p>
-        </div>
+          <div className="mt-6 p-4 border rounded-md bg-white shadow-md w-96">
+              <h2 className="text-lg font-semibold">Stock Prediction</h2>
+              <p><strong>Company:</strong> {prediction.company}</p>
+
+              {/* ✅ Convert predicted change to percentage */}
+              <p><strong>Predicted Change:</strong> { (prediction.predicted_change * 100).toFixed(2) }%</p>
+
+              {/* ✅ Show trend with color formatting */}
+              <p>
+                  <strong>Trend:</strong> 
+                  <span style={{ 
+                      color: prediction.trend === "Positive" ? "green" : prediction.trend === "Negative" ? "red" : "gray"
+                  }}>
+                      {" "}{prediction.trend}
+                  </span>
+              </p>
+          </div>
       )}
+
+
     </div>
   );
 }

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 import torch
 import os
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 import logging
 
 router = APIRouter()
@@ -17,7 +17,17 @@ STOCK_MODELS = {
 
 class PredictionRequest(BaseModel):
     company: str
-    sentiment_score: float  # ✅ Ensure this is a float
+    sentiment_score: float  # Must be a float
+
+class StockPredictionModel(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+        super(StockPredictionModel, self).__init__()
+        self.lstm = torch.nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.fc = torch.nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        lstm_out, _ = self.lstm(x)
+        return self.fc(lstm_out[:, -1, :])  # Get last time step output
 
 def load_model(stock_name):
     model_path = os.path.join(MODEL_DIR, STOCK_MODELS.get(stock_name))
@@ -25,31 +35,57 @@ def load_model(stock_name):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=500, detail=f"Model not found for {stock_name}")
 
-    model = torch.jit.load(model_path, map_location=torch.device("cpu"))
-    model.eval()
-    return model
+    try:
+        model = StockPredictionModel(input_size=13, hidden_size=32, output_size=1, num_layers=2)
+
+        model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")), strict=False)
+        model.eval()
+        return model
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
 @router.post("/predict")
 async def predict_stock(request: PredictionRequest):
     try:
-        logging.info(f"Received prediction request: {request}")
+        logging.info(f"📩 Received prediction request: {request}")
 
         if request.company not in STOCK_MODELS:
+            logging.error(f"❌ Invalid company: {request.company}")
             raise HTTPException(status_code=400, detail="Invalid company. Choose from: Amazon, Apple, Tesla, Microsoft")
 
         model = load_model(request.company)
 
-        # Convert sentiment score to tensor input
-        input_tensor = torch.tensor([[request.sentiment_score]], dtype=torch.float32)
+        # ✅ Expand the input to 13 features
+        input_features = [request.sentiment_score] + [0.0] * 12  # Placeholder for missing features
+        input_tensor = torch.tensor(input_features, dtype=torch.float32)
 
-        # Make prediction
+        # ✅ Reshape tensor for LSTM (batch_size=1, seq_length=1, feature_size=13)
+        input_tensor = input_tensor.unsqueeze(0).unsqueeze(0)
+
+        logging.info(f"🧠 Model input tensor shape: {input_tensor.shape}")  # Should print (1, 1, 13)
+
+        # 🔹 Make prediction
         predicted_change = model(input_tensor).item()
+
+        # ✅ Multiply prediction by sentiment score to reflect polarity
+        adjusted_change = round(predicted_change * request.sentiment_score, 4)
+
+        # ✅ Determine trend label
+        if adjusted_change > 0:
+            trend = "Positive"
+        elif adjusted_change < 0:
+            trend = "Negative"
+        else:
+            trend = "Stable"
+
+        logging.info(f"✅ Model output for {request.company}: {adjusted_change} ({trend})")
 
         return {
             "company": request.company,
-            "predicted_change": predicted_change
+            "predicted_change": adjusted_change,
+            "trend": trend
         }
 
     except Exception as e:
-        logging.error(f"Error predicting stock: {e}")
+        logging.error(f"❌ Error predicting stock: {e}")
         raise HTTPException(status_code=500, detail=str(e))

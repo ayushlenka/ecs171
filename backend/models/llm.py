@@ -1,8 +1,6 @@
 import os
 import requests
-# Import the Python SDK
 import google.generativeai as genai
-# Used to securely store your API key
 from dotenv import load_dotenv
 
 load_dotenv()
