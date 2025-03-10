@@ -1,0 +1,10 @@
+# Ignore Python virtual environment
+venv/
+__pycache__/
+
+# Ignore compiled machine learning models
+*.pth
+
+# Ignore system files
+.DS_Store
+*.log
