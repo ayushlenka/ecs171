@@ -9,16 +9,8 @@ class TweetRequest(BaseModel):
 
 @router.options("/analyze_tweet")
 async def options_analyze_tweet():
-    """Handles OPTIONS requests for CORS preflight."""
-    return JSONResponse(
-        content={},  # Fix: Provide an empty response body
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    )
+    """Explicitly handle OPTIONS requests for CORS."""
+    return JSONResponse(status_code=200, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
 
 @router.post("/analyze_tweet")
 async def analyze_tweet(request: TweetRequest):
